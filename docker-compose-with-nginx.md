@@ -246,3 +246,47 @@ server {
 
 proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=CACHE:10m inactive=7d max_size=2g use_temp_path=off;
 ```
+
+
+
+## Start Services as Daemon
+
+For initial installation:
+
+```
+$ docker-compose pull
+Pulling redis (redis:alpine)...
+alpine: Pulling from library/redis
+Digest: sha256:692147c8a1673fc172f12724f5313e00b8459291e3fe17a10856b4d2c0bf56fb
+Status: Image is up to date for redis:alpine
+Pulling db (postgres:9-alpine)...
+9-alpine: Pulling from library/postgres
+Digest: sha256:49f5c42990833857f4caa6d06437b3ce6391e830b05e07c11c6c7737be535649
+Status: Image is up to date for postgres:9-alpine
+Pulling streaming (pluralcafe/mastodon:stable)...
+stable: Pulling from pluralcafe/mastodon
+Digest: sha256:10d01d4376454e86bddcdb836b8d088e9eff4a390a1b4e0250b7893dd87f307e
+Status: Downloaded newer image for pluralcafe/mastodon:stable
+Pulling sidekiq (pluralcafe/mastodon:stable)...
+stable: Pulling from pluralcafe/mastodon
+Digest: sha256:10d01d4376454e86bddcdb836b8d088e9eff4a390a1b4e0250b7893dd87f307e
+Status: Image is up to date for pluralcafe/mastodon:stable
+Pulling web (pluralcafe/mastodon:stable)...
+stable: Pulling from pluralcafe/mastodon
+Digest: sha256:10d01d4376454e86bddcdb836b8d088e9eff4a390a1b4e0250b7893dd87f307e
+Status: Image is up to date for pluralcafe/mastodon:stable
+
+$ docker-compose up -d
+Starting redis... done
+Starting db... done
+Starting nginx... done
+Starting web... done
+Starting streaming... done
+Starting sidekiq... done
+```
+
+For updating:
+
+```
+$ (docker-compose pull 2>&1 | grep --silent "Downloaded newer") && (docker-compose stop && docker-compose up -d)
+```
