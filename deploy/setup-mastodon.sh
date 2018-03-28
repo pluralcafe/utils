@@ -17,6 +17,8 @@ sed -i 's|DB_HOST=db|DB_HOST=mstdb|' $YML_LOC/.docker/mastodon/.env.production
 sed -i 's|ES_HOST=es|ES_HOST=mstes|' $YML_LOC/.docker/mastodon/.env.production
 sed -i "s|SECRET_KEY_BASE=|SECRET_KEY_BASE=$SECRET_KEY_BASE|" $YML_LOC/.docker/mastodon/.env.production
 sed -i "s|OTP_SECRET=|OTP_SECRET=$OTP_SECRET|" $YML_LOC/.docker/mastodon/.env.production
+sed -i "s|# UID=1000|UID=$MUID|" $YML_LOC/.docker/mastodon/.env.production
+sed -i "s|# GID=1000|GID=$MUID|" $YML_LOC/.docker/mastodon/.env.production
 
 docker-compose run --rm mstweb rake db:migrate
 (openssl dhparam -rand /dev/urandom -out $YML_LOC/.docker/nginx/dhparam.pem 4096 2>&1 >/dev/null) & pid=$!
