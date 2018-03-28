@@ -1,0 +1,162 @@
+version: '3'
+services:
+
+  nginx:
+    restart: always
+    image: nginx:mainline
+    command: nginx -g 'daemon off;'
+    networks:
+      - external_network
+      - mstweb_network
+      - mststreaming_network
+      - netdata_network
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./.docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./.docker/nginx/dhparam.pem:/etc/ssl/dhparam.pem:ro
+      - ./.docker/nginx/certs/fullchain.pem:/etc/ssl/fullchain.pem:ro
+      - ./.docker/nginx/certs/privkey.pem:/etc/ssl/privkey.pem:ro
+      - ./.docker/nginx/certs/cert.pem:/etc/ssl/cert.pem:ro
+      - ./public:/var/www/html:ro
+    ports:
+      - "80:80"
+      - "443:443"
+
+  netdata:
+    restart: always
+    image: titpetric/netdata
+    restart: unless-stopped
+    cap_add:
+      - SYS_PTRACE
+    volumes:
+      - ./.docker/netdata:/etc/netdata
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    networks:
+      - netdata_network
+
+  mstdb:
+    restart: always
+    image: postgres:9.6-alpine
+    networks:
+      - mstdb_network
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./.docker/mastodon/db:/var/lib/postgresql/data
+
+  mstredis:
+    restart: always
+    image: redis:alpine
+    networks:
+      - mstredis_network
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./.docker/mastodon/redis:/data
+
+#  mstes:
+#    restart: always
+#    image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.3
+#    environment:
+#      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+#    networks:
+#      - mstes_network
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - ./.docker/mastodon/es:/usr/share/elasticsearch/data
+
+  mstweb:
+    image: pluralcafe/mastodon:stable
+    restart: always
+    env_file: ./.docker/mastodon/.env.production
+    command: bash -c "rake db:migrate; bundle exec rails s -p 3000 -b '0.0.0.0'"
+    networks:
+      - external_network
+      - mstdb_network
+      - mstredis_network
+      - mstweb_network
+    depends_on:
+      - mstdb
+      - mstredis
+#      - mstes
+    volumes:
+      - ./public/system:/mastodon/public/system
+      - ./public/assets:/tmp/assets
+      - ./public/packs:/tmp/packs
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  mststreaming:
+    image: pluralcafe/mastodon:stable
+    restart: always
+    env_file: ./.docker/mastodon/.env.production
+    command: yarn start
+    networks:
+      - mstdb_network
+      - mstredis_network
+      - mststreaming_network
+    depends_on:
+      - mstdb
+      - mstredis
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  mstsidekiq:
+    image: pluralcafe/mastodon:stable
+    restart: always
+    env_file: ./.docker/mastodon/.env.production
+    command: bundle exec sidekiq -q default -q mailers -q pull -q push
+    depends_on:
+      - mstdb
+      - mstredis
+    networks:
+      - external_network
+      - mstdb_network
+      - mstredis_network
+      - mstweb_network
+      - mststreaming_network
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./public/system:/mastodon/public/system
+
+#  mrxsynapse:
+#    image: avhost/docker-matrix:latest
+#    restart: always
+#    command: start
+#    environment:
+#      - SERVER_NAME=plural.cafe
+#      - REPORT_STATS=yes
+#      - MATRIX_UID=981
+#      - MATRIX_GID=981
+#    networks:
+#      - mrxsynapse_network
+#      - mrxdb_network
+#      - external_network
+#    ports:
+#      - "8448:8448"
+#      - "3478:3478"
+#    volumes:
+#      - /etc/localtime:/etc/localtime:ro
+#      - /etc/timezone:/etc/timezone:ro
+#      - ./.docker/matrix:/data
+
+networks:
+  external_network:
+  mstdb_network:
+    internal: true
+  mstredis_network:
+    internal: true
+  mststreaming_network:
+    internal: true
+  mstweb_network:
+    internal: true
+  netdata_network:
+    internal: true
