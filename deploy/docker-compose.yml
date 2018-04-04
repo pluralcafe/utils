@@ -78,13 +78,6 @@ services:
 
 networks:
   external_network:
-    driver: bridge
-    enable_ipv6: true
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.18.0.0/16
-        - subnet: 2001:19f0:5:46d5::/64
   mstdb_network:
     internal: true
   mstredis_network:
