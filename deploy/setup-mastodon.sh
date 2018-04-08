@@ -23,15 +23,19 @@ sed -i "s|# UID=1000|UID=$MUID|" $YML_LOC/.docker/mastodon/.env.production
 sed -i "s|# GID=1000|GID=$MGID|" $YML_LOC/.docker/mastodon/.env.production
 
 docker-compose run --rm mstweb rake db:migrate
-(openssl dhparam -rand /dev/urandom -out $YML_LOC/.docker/nginx/dhparam.pem 4096 2>&1 >/dev/null) & pid=$!
 
 echo
-echo "Mostly set up. Modify .docker/mastodon/.env.production settings and then"
-echo "you can do a 'docker-compose up -d' on this instance. OpenSSL is still"
-echo "running, so wait a bit for it to finish too."
+echo "Mostly set up. Modify .docker/mastodon/.env.production settings, run"
+echo "'docker-compose run --rm mstweb rake mastodon:webpush:generate_vapid_key'"
+echo "and then replace those values in .env.production as well. When you're"
+echo "finished, just run 'docker-compose up -d'."
 echo
-echo "There is an Nginx configuration file in conf/nginx.conf you can use."
+echo "There is an Nginx configuration file in conf/nginx.conf you can use. Just"
+echo "copy it to /etc/nginx/conf.d/ directory as root then start Nginx."
 echo
 echo "Also, when you're going to the instance, register and then run this command:"
 echo "docker-compose run --rm mstweb rake mastodon:make_admin USERNAME=yourusername"
+echo
+echo "Finally, to update, just run 'docker-compose pull' and it will pull the"
+echo "newest image from Docker Hub, and then 'docker-compose up -d' to restart."
 echo
