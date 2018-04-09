@@ -64,17 +64,17 @@ do_acme() {
 }
 
 do_backup() {
-  if ["$2" == "daily" ]; then
+  if [ "$2" == "daily" ]; then
     find "$(pwd)/.docker/mastodon/backups" -type f -name postgres-daily.* -mtime +7 -delete
     docker-compose exec -T -u postgres db sh -c "umask 0377 && /usr/local/bin/pg_dump -Fc -h db -d postgres -U postgres" > "$(pwd)/.docker/mastodon/backups/postgres-daily.$(date -Iseconds).pgsql"
   fi
 
-  if ["$2" == "hourly" ]; then
+  if [ "$2" == "hourly" ]; then
     find "$(pwd)/.docker/mastodon/backups" -type f -name postgres-hourly.* --min +360 -delete
     docker-compose exec -T -u postgres db sh -c "umask 0377 && /usr/local/bin/pg_dump -Fc -h db -d postgres -U postgres" > "$(pwd)/.docker/mastodon/backups/postgres-hourly.$(date -Iseconds).pgsql"
   fi
 
-  if ["$2" == "restore" ]; then
+  if [ "$2" == "restore" ]; then
     docker-compose run --rm db sh -c "/usr/local/bin/psql --set ON_ERROR_STOP=on -Fc -h db -d postgres -U postgres" < "$3"
   fi
 }
@@ -100,9 +100,9 @@ case "$1" in
     do_cron
     ;;
   backup)
-    do_backup
+    do_backup "$@"
     ;;
   *)
-    do_rake
+    do_rake "$@"
     ;;
 esac
