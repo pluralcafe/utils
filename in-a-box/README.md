@@ -8,7 +8,7 @@ Step 3: Run `./mastodon.sh setup` and afterwards, move `public/system/.env.produ
 
 Step 4: Run `./mastodon.sh acme` to set up Let's Encrypt. Make sure that port 80 is allowed by the firewall.
 
-Step 5: Run `docker-compose up -d` to start all services. Verify with `docker-compose ps` that they're up.
+Step 5: Run `docker-compose up -d` to start all services. Verify with `docker-compose ps` that they're up, and if there's errors, `docker-compose logs -f`.
 
 Step 6: Register on the instance.
 
