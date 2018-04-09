@@ -18,6 +18,8 @@ services:
       - NGINX_HOST=example.com
     networks:
       - external_network
+      - mstweb_network
+      - mststreaming_network
     command: sh -c "envsubst \"`env | awk -F = '{printf \" $$%s, $$1}'`\" < /tmp/template.conf > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
 
   db:
