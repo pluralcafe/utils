@@ -5,24 +5,22 @@ services:
     restart: always
     image: nginx:mainline
     volumes:
-      - ./.docker/nginx/nginx.conf:/etc/nginx/conf.d/template.ro:ro
-#     Replace the /path/to/letsencrypt/stuff.pem with wherever the corresponding files are:
-      - /path/to/letsencrypt/fullchain.pem:/etc/ssl/fullchain.pem:ro
-      - /path/to/letsencrypt/privkey.pem:/etc/ssl/privkey.pem:ro
-      - /path/to/letsencrypt/cert.pem:/etc/ssl/cert.pem:ro
+      - ./.docker/nginx/nginx.conf:/tmp/template.conf:ro
+      - ./.docker/nginx/fullchain.pem:/etc/ssl/fullchain.pem:ro
+      - ./.docker/nginx/privkey.pem:/etc/ssl/privkey.pem:ro
+      - ./.docker/nginx/cert.pem:/etc/ssl/cert.pem:ro
       - ./public:/var/www/html:ro
       - /etc/localtime:/etc/localtime:ro
     ports:
       - "80:80"
       - "443:443"
     environment:
-#       Replace example.com with your webserver:
       - NGINX_HOST=example.com
     networks:
       - external_network
-    command: sh -c "envsubst \"`env | awk -F = '{printf \" $$%s, $$1}'`\" < /etc/nginx/conf.d/template.ro > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+    command: sh -c "envsubst \"`env | awk -F = '{printf \" $$%s, $$1}'`\" < /tmp/template.conf > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
 
-  mstdb:
+  db:
     restart: always
     image: postgres:10.3-alpine
     networks:
@@ -31,7 +29,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - ./.docker/mastodon/db:/var/lib/postgresql/data
 
-  mstredis:
+  redis:
     restart: always
     image: redis:alpine
     networks:
@@ -40,7 +38,7 @@ services:
       - /etc/localtime:/etc/localtime:ro
       - ./.docker/mastodon/redis:/data
 
-#  mstes:
+#  es:
 #    restart: always
 #    image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.3
 #    environment:
@@ -57,27 +55,64 @@ services:
 #      - /etc/timezone:/etc/timezone:ro
 #      - ./.docker/mastodon/es:/usr/share/elasticsearch/data
 
-  mstweb:
-    image: pluralcafe/mastodon:stable
+  web:
+    image: tootsuite/mastodon:latest
     restart: always
-# Get .env.production from https://raw.githubusercontent.com/tootsuite/mastodon/master/.env.production.sample
     env_file: ./.docker/mastodon/.env.production
+    command: bundle exec rails s -p 3000 -b '0.0.0.0'
     networks:
-      - external_network
       - mstdb_network
       - mstredis_network
+#      - mstes_network
+      - mstweb_network
     depends_on:
       - mstdb
       - mstredis
 #      - mstes
     volumes:
+      - ./public/assets:/mastodon/public/assets
+      - ./public/packs:/mastodon/public/packs
+      - ./public/system:/mastodon/public/system
+      - /etc/localtime:/etc/localtime:ro
+    tmpfs:
+      - /mastodon/tmp/pids:rw,noexec,uid=991,gid=991,mode=0666
+
+  streaming:
+    image: tootsuite/mastodon:latest
+    restart: always
+    env_file: ./.docker/mastodon/.env.production
+    command: yarn start
+    networks:
+      - mstdb_network
+      - mstredis_network
+      - mststreaming_network
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+    depends_on:
+      - db
+      - redis
+
+  sidekiq:
+    image: tootsuite/mastodon:latest
+    restart: always
+    env_file: ./.docker/mastodon/.env.production
+    command: bundle exec sidekiq -q default -q mailers -q pull -q push
+    depends_on:
+      - db
+      - redis
+    networks:
+      - external_network
+      - mstdb_network
+#      - mstes_network
+      - mstredis_network
+    volumes:
+      - ./public/assets:/mastodon/public/assets
+      - ./public/packs:/mastodon/public/packs
       - ./public/system:/mastodon/public/system
       - /etc/localtime:/etc/localtime:ro
 
 networks:
   external_network:
-# Uncomment the below for IPv6 support and fill in the last subnet
-# with the IPv6 subnet your hosting provider gave you
 #    driver: bridge
 #    enable_ipv6: true
 #    ipam:
@@ -89,3 +124,9 @@ networks:
     internal: true
   mstredis_network:
     internal: true
+  mststreaming_network:
+    internal: true
+  mstweb_network:
+    internal: true
+#  mstes_network:
+#    internal: true
