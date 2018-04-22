@@ -1,6 +1,6 @@
 # Secure-ish Mastodon Setup In A Box
 
-Last Updated: April 9th, 2018.
+Last Updated: April 22nd, 2018.
 
 ## Step 1. Create a new VPS
 
@@ -185,62 +185,7 @@ $ mkdir public
 
 **Why is Acme.sh not running in a container?** We need some way of rebooting Nginx whenever Acme.sh fetches new certificates automatically, and there is no present way to do this if Acme is running isolated from everything else. This might be a little more risky, but this is the only software that you're installing out of Docker (if you choose option 1).
 
-#### Option 1: Temporary Nginx in a Container
-
-With a text editor of your choice (i.e. `nano docker-compose.yml`), make a new file named `docker-compose.yml`:
-
-```
-version: '2.1'
-services:
-
-  nginx:
-    image: nginx:mainline
-    volumes:
-      - ./public:/usr/share/nginx/html
-    ports:
-      - "80:80"
-    networks:
-      - external_network
-
-networks:
-  external_network:
-```
-
-Next, let's bring up our `nginx` container and make sure nothing is wrong:
-
-`$ docker-compose up nginx`
-
-If everything boots up and looks fine, that means our webserver is running and serving contents. Hit `CTRL-C` to stop the container, and then let's run `nginx` as a daemon by doing:
-
-`$ docker-compose up -d nginx`
-
-The next step is to run Acme.sh and tell it to both issue certificates and point it to a place where we can store temporary text files needed for it.
-
-First off, let's issue the certificates:
-
-`$ acme.sh --issue -d yourdomain.com -d mail.yourdomain.com -w $(pwd)/public --keylength ec-384`
-
-We're telling Let's Encrypt to issue a certificate to `yourdomain.com` (which you should replace) and `mail.yourdomain.com` (for your mailserver) and if you want to add subdomains, just add `-d subdomainone.yourdomain.com -d subdomaintwo.yourdomain.com` etc.
-
-**Note:** If you are interested in using SendGrid or Mailgun for mail sending, you can leave off `-d mail.yourdomain.com`
-
-Why `ec-384`? RSA certificates are increasingly vulnerable to being compromised, which is the default. As we're going for a secure install, issuing certificates under `ECDSA secp384r1` means that we have the equivalent of a `RSA 3072-bit key`.
-
-Finally, let's generate `pem` files for use in Nginx, and tell Acme.sh to restart Nginx each time a certificate renewal is requested:
-
-```
-$ acme.sh --install-cert --ecc -d yourdomain.com -d mail.yourdomain.com \
-   --cert-file $(pwd)/.docker/nginx/tls_cert.pem \
-   --key-file $(pwd)/.docker/nginx/tls_key.pem \
-   --fullchain-file $(pwd)/.docker/nginx/tls_fullchain.pem \
-   --reloadcmd "$(command -v docker-compose) -f $(pwd)/docker-compose.yml stop nginx; $(command -v docker-compose) -f $(pwd)/docker-compose.yml up -d nginx"
-```
-
-With our Let's Encrypt certificates and Acme.sh being on a cron job to automatically renew them and restart our Nginx container, that part should be set up. So now we should `$ docker-compose down` to stop and remove our Nginx container, and `$ rm docker-compose.yml`
-
-#### Option 2: Verify via DNS
-
-Acme.sh can also verify by setting DNS records. However, there is no way for Acme.sh itself to set DNS records via the Vultr API, so we're going to have to grant it access by a program named [Lexicon](https://github.com/AnalogJ/lexicon).
+Acme.sh can verify that you own the domain by setting DNS records. However, there is no way for Acme.sh itself to set DNS records via the Vultr API, so we're going to have to grant it access by a program named [Lexicon](https://github.com/AnalogJ/lexicon).
 
 The first step is to `exit` out of our `mastodon` user back into our `privacc` user. Next, we're going to have to install Pip, a package manager for the system-installed Python 3, and a few dependencies to support Pip, like so:
 
@@ -284,7 +229,7 @@ $ acme.sh --install-cert --ecc -d yourdomain.com -d mail.yourdomain.com \
    --cert-file $(pwd)/.docker/nginx/tls_cert.pem \
    --key-file $(pwd)/.docker/nginx/tls_key.pem \
    --fullchain-file $(pwd)/.docker/nginx/tls_fullchain.pem \
-   --reloadcmd "$(command -v docker-compose) -f $(pwd)/docker-compose.yml stop nginx; $(command -v docker-compose) -f $(pwd)/docker-compose.yml up -d nginx"
+   --reloadcmd "$(command -v docker) exec \$($(command -v docker-compose) ps -q nginx) nginx -s reload"
 ```
 
 We should be good to go now. If there are `docker-compose` errors, just ignore them for now. We need to have Acme.sh restart Nginx whenever it fetches new certificates.
@@ -298,7 +243,7 @@ We will now try and configure the necessities for Mastodon to run.
 First up, open up `$ nano docker-compose.yml` (or instead of `nano`, use `vim` or `emacs` or whatever you prefer) and paste the following, replacing `yourdomain.com` with your domain name:
 
 ```
-version: '2.1'
+version: '2.4'
 services:
 
   nginx:
@@ -313,9 +258,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
     environment:
       - NGINX_HOST=yourdomain.com
-      - TLS_PROTOCOLS="TLSv1.3 TLSv1.2"
-      - TLS_CIPHERS="ECDHE+CHACHA20:AES256+EECDH:AES256+EDH:!aNULL"
-      - TLS_ECDH_CURVE="X25519:secp521r1:secp384r1"
+      - TLS_PROTOCOLS="TLSv1.2 TLSv1.3"
+      - TLS_CIPHERS="[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305|ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305]:ECDHE+AES128:RSA+AES128:ECDHE+AES256:RSA+AES256:ECDHE+3DES:RSA+3DES'"
+      - TLS_ECDH_CURVE="X25519:secp384r1"
     ports:
       - "80:80"
       - "443:443"
@@ -325,6 +270,15 @@ services:
       - rails_network
       - rainloop_network
       - streaming_network
+
+  ipv6nat:
+    restart: always
+    image: robbertkl/ipv6nat
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /lib/modules:/lib/modules:ro
+    privileged: true
+    network_mode: host
 
   rainloop:
     image: hardware/rainloop
@@ -476,7 +430,7 @@ networks:
       driver: default
       config:
         - subnet: 172.18.0.0/16
-        - subnet: 2600:1234:1234:1234::/64
+        - subnet: fd00:dead:beef::/48
   db_network:
     internal: true
 #  es_network:
@@ -496,8 +450,6 @@ Now, there are a few explanations to this:
 1. Because we're running Mastodon and Nginx in a container, there are several components to this. As we're segmenting the network, none of the things listening on any of the servers are broadcasting to the outside world, in fact, it's not even broadcasting to your server.
 2. We're bridging to separate networks in separate containers based on what we need. Nginx cannot contact the Postgres container directly, but Redis can't contact Postgres either. In fact, the only three that can see the outside world are Nginx, Mailserver and Sidekiq.
 3. We don't need Elasticsearch - unless your server has a LOT of RAM and can handle the CPU load. If you think your server is powerful enough, you can uncomment the ES-specific lines above.
-
-There's also something that you have to do: get your IPv6 subnet. Go to your Vultr control panel, head to Servers, click on your server, go to Settings, and then IPv6. Make a note of "Network" under "Public IPv6 Network". What you want to do is replace "2600:1234:1234:1234::" above in `docker-compose.yml` with that network address. That is provided to you by Vultr.
 
 Pull all of the images related to the software above by running:
 
