@@ -13,7 +13,7 @@ cd "$HOME" || exit
   docker cp "$($COMPOSE ps -q mstweb):/mastodon/public/assets" public/
   docker cp "$($COMPOSE ps -q mstweb):/mastodon/public/packs" public/
 
-  docker image prune -f
+  docker system prune --all -f
 
   curl -sS "https://raw.githubusercontent.com/pluralcafe/utils/master/deploy/docker-compose.yml" > docker-compose.yml
 }

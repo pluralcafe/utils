@@ -1,23 +1,50 @@
-version: '2.3'
+version: '2.4'
 services:
+
+  nginx:
+    restart: always
+    image: nginx:mainline-alpine
+    ports:
+      - 80:80
+      - 443:443
+    environment:
+      - NGINX_HOST=plural.cafe
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./.docker/nginx/nginx.conf:/etc/nginx/conf.d/web.template:ro
+      - ./.acme.sh/${NGINX_HOST}_ecc/${NGINX_HOST}.cer:/etc/ssl/cert.pem:ro
+      - ./.acme.sh/${NGINX_HOST}_ecc/${NGINX_HOST}.key:/etc/ssl/privkey.pem:ro
+      - ./.acme.sh/${NGINX_HOST}_ecc/fullchain.cer:/etc/ssl/fullchain.pem:ro
+      - ./public:/var/www/html:ro
+    command: sh -c "envsubst \"`env | awk -F = '{printf \" $$%s\", $$1}'`\" < /etc/nginx/conf.d/web.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+    networks:
+      - external_network
+      - mstweb_network
+      - mststreaming_network
+      - netdata_network
 
   netdata:
     restart: always
     image: titpetric/netdata
-    restart: unless-stopped
     cap_add:
       - SYS_PTRACE
-    ports:
-      - "127.0.0.1:19999:19999"
     volumes:
+      - /etc/localtime:/etc/localtime:ro
       - ./.docker/netdata:/etc/netdata
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /var/run/docker.sock:/var/run/docker.sock
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
     networks:
-      - external_network
+      - netdata_network
+
+  ipv6nat:
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /lib/modules:/lib/modules:ro
+    privileged: true
+    network_mode: host
+    image: robbertkl/ipv6nat
 
   mstdb:
     restart: always
@@ -26,59 +53,115 @@ services:
       - mstdb_network
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
       - ./.docker/mastodon/db:/var/lib/postgresql/data
 
   mstredis:
     restart: always
-    image: redis:alpine
+    image: redis:4-alpine
     networks:
       - mstredis_network
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
       - ./.docker/mastodon/redis:/data
 
-#  mstes:
-#    restart: always
-#    image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.3
-#    environment:
-#      - bootstrap.memory_lock=true
-#      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-#    ulimits:
-#      memlock:
-#        soft: -1
-#        hard: -1
-#    networks:
-#      - mstes_network
-#    volumes:
-#      - /etc/localtime:/etc/localtime:ro
-#      - /etc/timezone:/etc/timezone:ro
-#      - ./.docker/mastodon/es:/usr/share/elasticsearch/data
+  mstes:
+    restart: always
+    image: docker.elastic.co/elasticsearch/elasticsearch-oss:6.2.3
+    environment:
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      - mstes_network
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./.docker/mastodon/es:/usr/share/elasticsearch/data
 
   mstweb:
     image: pluralcafe/mastodon:stable
     restart: always
     env_file: ./.docker/mastodon/.env.production
+    environment:
+      - WEB_CONCURRENCY=1
+      - MAX_THREADS=15
+    command: sh -c "rm -f /mastodon/tmp/pids/server.pid; rake db:migrate; bundle exec rails s -p 3000 -b '0.0.0.0'"
     networks:
-      - external_network
       - mstdb_network
+      - mstes_network
       - mstredis_network
-    ports:
-      - "127.0.0.1:3000:3000"
-      - "127.0.0.1:4000:4000"
+      - mstweb_network
     depends_on:
       - mstdb
       - mstredis
-#      - mstes
+      - mstes
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./public/system:/mastodon/public/system
+
+  mststreaming:
+    image: pluralcafe/mastodon:stable
+    restart: always
+    env_file: .docker/mastodon/.env.production
+    command: yarn start
+    networks:
+      - mstdb_network
+      - mstredis_network
+      - mststreaming_network
+    depends_on:
+      - mstdb
+      - mstredis
+
+  mstsidekiq:
+    image: pluralcafe/mastodon:stable
+    restart: always
+    env_file: .docker/mastodon/.env.production
+    environment:
+      - DB_POOL=10
+    command: bundle exec sidekiq -q default -q mailers -q pull -q push
+    depends_on:
+      - mstdb
+      - mstes
+      - mstredis
+    networks:
+      - external_network
+      - mstdb_network
+      - mstes_network
+      - mstredis_network
     volumes:
       - ./public/system:/mastodon/public/system
-      - /etc/localtime:/etc/localtime:ro
-      - /etc/timezone:/etc/timezone:ro
+
+  mstbarkeep:
+    image: pluralcafe/barkeep
+    restart: always
+    env_file: ./.docker/mastodon/.env.ambassador
+    command: yarn start
+    depends_on:
+      - mstdb
+    networks:
+      - external_network
+      - mstdb_network
 
 networks:
   external_network:
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.18.0.0/16
+        - subnet: fd00:dead:beef::/48
   mstdb_network:
     internal: true
+  mstes_network:
+    internal: true
   mstredis_network:
+    internal: true
+  mststreaming_network:
+    internal: true
+  mstweb_network:
+    internal: true
+  netdata_network:
     internal: true
