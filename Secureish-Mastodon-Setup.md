@@ -220,7 +220,7 @@ $ acme.sh --install-cert --ecc -d yourdomain.com -d mail.yourdomain.com \
    --cert-file $(pwd)/.docker/nginx/tls_cert.pem \
    --key-file $(pwd)/.docker/nginx/tls_key.pem \
    --fullchain-file $(pwd)/.docker/nginx/tls_fullchain.pem \
-   --reloadcmd "$(command -v docker-compose) -f $(pwd)/docker-compose.yml exec -T nginx -s reload"
+   --reloadcmd "$(command -v docker-compose) -f $(pwd)/docker-compose.yml exec -T nginx nginx -s reload"
 ```
 
 We should be good to go now. If there are `docker-compose` errors, just ignore them for now. We need to have Acme.sh restart Nginx whenever it fetches new certificates.
