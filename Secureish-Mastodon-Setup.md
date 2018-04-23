@@ -113,21 +113,12 @@ Next, we're going to be setting up Docker and Docker Compose. Docker is a contai
 
 Firstly, run:
 
-`$ curl -fsSL https://get.docker.com -o get-docker.sh`
-
-Now run:
-
-`$ less get-docker.sh`
-
-If everything looks alright and you see stuff like `# This script is meant for a quick & easy install`, exit out by pressing Q and run this:
-
-`$ chmod a+x get-docker.sh && sudo ./get-docker.sh && rm get-docker.sh`
+`$ sudo curl -fsSL https://get.docker.com | bash -E --`
 
 Next, we're going to install the latest version of Docker Compose by running these commands:
 
 ```
-$ COMPOSE_VERSION=`git ls-remote https://github.com/docker/compose | grep refs/tags | grep -oP "[0-9]+\.[0-9][0-9]+\.[0-9]+$" | tail -n 1`
-$ sudo curl -sS https://github.com/docker/compose/releases/download/$COMPOSE_VERSION/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+$ sudo curl -sS "https://github.com/docker/compose/releases/download/$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)/docker-compose-`uname -s`-`uname -m`" > /usr/local/bin/docker-compose
 $ sudo chmod a+x /usr/local/bin/docker-compose
 ```
 
@@ -212,7 +203,7 @@ Back in our handy dandy SSH terminal, run the following (replacing `inserttokenh
 ```
 $ export PATH="$PATH:$(pwd)/.local/bin"
 $ export PROVIDER=vultr
-$ export LEXICON_VULTR_TOKEN='inserttokenhere'
+$ export LEXICON_VULTR_TOKEN=inserttokenhere
 $ acme.sh --issue -d yourdomain.com -d mail.yourdomain.com --dns dns_lexicon --keylength ec-384
 ```
 
@@ -229,7 +220,7 @@ $ acme.sh --install-cert --ecc -d yourdomain.com -d mail.yourdomain.com \
    --cert-file $(pwd)/.docker/nginx/tls_cert.pem \
    --key-file $(pwd)/.docker/nginx/tls_key.pem \
    --fullchain-file $(pwd)/.docker/nginx/tls_fullchain.pem \
-   --reloadcmd "$(command -v docker) exec \$($(command -v docker-compose) ps -q nginx) nginx -s reload"
+   --reloadcmd "$(command -v docker-compose) -f $(pwd)/docker-compose.yml exec -T nginx -s reload"
 ```
 
 We should be good to go now. If there are `docker-compose` errors, just ignore them for now. We need to have Acme.sh restart Nginx whenever it fetches new certificates.
@@ -250,16 +241,16 @@ services:
     restart: always
     image: nginx:mainline
     volumes:
+      - /etc/localtime:/etc/localtime:ro
       - ./public:/var/www/html:ro
       - ./.docker/nginx/nginx.conf:/tmp/nginx.conf:ro
       - ./.docker/nginx/tls_cert.pem:/etc/ssl/cert.pem:ro
       - ./.docker/nginx/tls_key.pem:/etc/ssl/key.pem:ro
       - ./.docker/nginx/tls_fullchain.pem:/etc/ssl/fullchain.pem:ro
-      - /etc/localtime:/etc/localtime:ro
     environment:
       - NGINX_HOST=yourdomain.com
       - TLS_PROTOCOLS="TLSv1.2 TLSv1.3"
-      - TLS_CIPHERS="[ECDHE-ECDSA-AES128-GCM-SHA256|ECDHE-ECDSA-CHACHA20-POLY1305|ECDHE-RSA-AES128-GCM-SHA256|ECDHE-RSA-CHACHA20-POLY1305]:ECDHE+AES128:RSA+AES128:ECDHE+AES256:RSA+AES256:ECDHE+3DES:RSA+3DES'"
+      - TLS_CIPHERS="AES256+EECDH:AES256+EDH:!aNULL"
       - TLS_ECDH_CURVE="X25519:secp384r1"
     ports:
       - "80:80"
@@ -334,6 +325,7 @@ services:
     networks:
       - db_network
     volumes:
+      - /etc/localtime:/etc/localtime:ro
       - ./.docker/mastodon/db:/var/lib/postgresql/data
 
   redis:
@@ -342,6 +334,7 @@ services:
     networks:
       - redis_network
     volumes:
+      - /etc/localtime:/etc/localtime:ro
       - ./.docker/mastodon/redis:/data
   
 #### OPTIONAL AND REQUIRES A LOT OF MEMORY AND CPU ####
@@ -358,6 +351,7 @@ services:
 #    networks:
 #      - es_network
 #    volumes:
+#      - /etc/localtime:/etc/localtime:ro
 #      - ./.docker/mastodon/es:/usr/share/elasticsearch/data
 
   rails:
@@ -543,7 +537,7 @@ server {
 
   ssl_protocols $TLS_PROTOCOLS;
 
-  ssl_ciphers $TLS_CIPHERS;
+  ssl_ciphers '$TLS_CIPHERS';
   ssl_ecdh_curve $TLS_ECDH_CURVE;
   ssl_prefer_server_ciphers on;
 
@@ -602,7 +596,7 @@ server {
 
   ssl_protocols $TLS_PROTOCOLS;
 
-  ssl_ciphers $TLS_CIPHERS;
+  ssl_ciphers '$TLS_CIPHERS';
   ssl_ecdh_curve $TLS_ECDH_CURVE;
   ssl_prefer_server_ciphers on;
 
